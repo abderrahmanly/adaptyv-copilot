@@ -155,3 +155,6 @@ if prompt:
             events.append(ev)
             render_event(ev)
     st.session_state.transcript.append({"role": "assistant", "events": events})
+    # The sidebar rendered before this turn ran, so its candidate count is now
+    # stale. Rerun to redraw it; the transcript above replays from session state.
+    st.rerun()
