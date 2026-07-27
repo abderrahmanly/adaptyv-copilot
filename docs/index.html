@@ -1,0 +1,600 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adaptyv Copilot — an agent that runs your Design–Test–Learn loop</title>
+<meta name="description" content="An AI agent that runs Adaptyv Bio's Design-Test-Learn loop from plain English: designs binders, pre-screens them, orders Foundry assays, and learns from the results.">
+<meta name="author" content="Abderrahman">
+<meta name="color-scheme" content="light dark">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Adaptyv Copilot — an agent that runs your Design–Test–Learn loop">
+<meta property="og:description" content="An AI agent that runs Adaptyv Bio's Design-Test-Learn loop from plain English: designs binders, pre-screens them, orders Foundry assays, and learns from the results.">
+<meta property="og:url" content="https://abderrahmanly.github.io/adaptyv-copilot/">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><text y=%2226%22 font-size=%2226%22>&#129514;</text></svg>">
+</head>
+<body>
+<style>
+  /* ------------------------------------------------------------------
+     Palette derives from the project's central idea: a cheap PREDICTION
+     (ochre) checked against a real MEASUREMENT (teal). Those two hues
+     carry that meaning everywhere they appear, and nothing else.
+     Both pairs validated for CVD separation and contrast in both modes.
+     ------------------------------------------------------------------ */
+  :root {
+    --paper:      #F6F8F7;
+    --surface:    #FFFFFF;
+    --surface-2:  #EBEFED;
+    --rule:       #D5DCD9;
+    --rule-soft:  #E4E9E7;
+    --ink:        #101513;
+    --ink-2:      #414B47;
+    --ink-3:      #6F7B76;
+    --measured:   #00806A;
+    --predicted:  #B07A12;
+    --measured-w: #DCEDE8;
+    --code-bg:    #10201C;
+    --code-fg:    #D8E5E1;
+
+    --sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+    --serif: Georgia, "Iowan Old Style", "Times New Roman", serif;
+    --mono: "Cascadia Mono", "Cascadia Code", ui-monospace, Consolas, "SF Mono", monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:      #0E1211;
+      --surface:    #161A19;
+      --surface-2:  #1F2523;
+      --rule:       #333B38;
+      --rule-soft:  #252B29;
+      --ink:        #E9EEEC;
+      --ink-2:      #B2BDB9;
+      --ink-3:      #7F8B87;
+      --measured:   #199B7C;
+      --predicted:  #C08718;
+      --measured-w: #122A24;
+      --code-bg:    #080D0C;
+      --code-fg:    #D8E5E1;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:#0E1211; --surface:#161A19; --surface-2:#1F2523; --rule:#333B38;
+    --rule-soft:#252B29; --ink:#E9EEEC; --ink-2:#B2BDB9; --ink-3:#7F8B87;
+    --measured:#199B7C; --predicted:#C08718; --measured-w:#122A24;
+    --code-bg:#080D0C; --code-fg:#D8E5E1;
+  }
+  :root[data-theme="light"] {
+    --paper:#F6F8F7; --surface:#FFFFFF; --surface-2:#EBEFED; --rule:#D5DCD9;
+    --rule-soft:#E4E9E7; --ink:#101513; --ink-2:#414B47; --ink-3:#6F7B76;
+    --measured:#00806A; --predicted:#B07A12; --measured-w:#DCEDE8;
+    --code-bg:#10201C; --code-fg:#D8E5E1;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--sans); font-size: 16.5px; line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .band { padding: 0 26px; }
+  .band.alt { background: var(--surface); border-block: 1px solid var(--rule-soft); }
+  .inner { max-width: 940px; margin: 0 auto; padding: 62px 0; }
+  .inner.tight { padding: 48px 0; }
+
+  h1, h2, h3 { margin: 0; text-wrap: balance; }
+  h1 {
+    font-size: clamp(2.1rem, 5vw, 3.35rem); line-height: 1.05;
+    letter-spacing: -0.03em; font-weight: 700;
+  }
+  h2 {
+    font-size: clamp(1.4rem, 2.7vw, 1.95rem); line-height: 1.15;
+    letter-spacing: -0.02em; font-weight: 700;
+  }
+  h3 { font-size: 1.02rem; font-weight: 650; line-height: 1.35; }
+  p { margin: 0; max-width: 68ch; }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--ink-3); margin: 0;
+  }
+  .stack { display: flex; flex-direction: column; gap: 20px; }
+  .stack-s { display: flex; flex-direction: column; gap: 12px; }
+
+  code {
+    font-family: var(--mono); font-size: 0.85em; background: var(--surface-2);
+    padding: 0.1em 0.38em; border-radius: 3px; color: var(--ink);
+  }
+  a { color: var(--measured); text-underline-offset: 2px; }
+  a:focus-visible { outline: 2px solid var(--measured); outline-offset: 3px; border-radius: 2px; }
+
+  /* ---- hero ------------------------------------------------------- */
+  .hero { padding: 74px 0 58px; display: flex; flex-direction: column; gap: 22px; }
+  .hero .lede {
+    font-family: var(--serif); font-size: 1.2rem; line-height: 1.55;
+    color: var(--ink-2); max-width: 60ch;
+  }
+  .links { display: flex; flex-wrap: wrap; gap: 12px; padding-top: 6px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 9px;
+    font-family: var(--mono); font-size: 0.83rem; letter-spacing: 0.02em;
+    padding: 11px 18px; border-radius: 3px; text-decoration: none;
+    border: 1px solid var(--rule); color: var(--ink); background: var(--surface);
+    transition: border-color .15s ease, transform .15s ease;
+  }
+  .btn:hover { border-color: var(--measured); transform: translateY(-1px); }
+  /* --surface tracks the theme, so the label stays legible on the accent in both. */
+  .btn.primary {
+    background: var(--measured); border-color: var(--measured);
+    color: var(--surface); font-weight: 600;
+  }
+  .btn.primary:hover { border-color: var(--measured); }
+
+  .keynums {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+    gap: 1px; background: var(--rule); border: 1px solid var(--rule);
+    border-radius: 3px; overflow: hidden; margin-top: 8px;
+  }
+  .keynums div { background: var(--surface); padding: 16px 18px; display: flex; flex-direction: column; gap: 2px; }
+  .keynums .n {
+    font-size: 1.55rem; font-weight: 700; letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums; line-height: 1.1;
+  }
+  .keynums .l {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.11em;
+    text-transform: uppercase; color: var(--ink-3);
+  }
+
+  /* ---- loop ------------------------------------------------------- */
+  .loop { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; }
+  .loop .s {
+    background: var(--surface); border: 1px solid var(--rule);
+    border-top: 3px solid var(--predicted); border-radius: 3px;
+    padding: 15px 16px 17px; display: flex; flex-direction: column; gap: 7px; min-width: 0;
+  }
+  .loop .s[data-real] { border-top-color: var(--measured); }
+  .loop .s .k {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.13em;
+    text-transform: uppercase; color: var(--predicted); font-weight: 600;
+  }
+  .loop .s[data-real] .k { color: var(--measured); }
+  .loop .s p { font-size: 0.89rem; line-height: 1.48; color: var(--ink-2); max-width: none; }
+  @media (max-width: 780px) { .loop { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+  @media (max-width: 440px) { .loop { grid-template-columns: 1fr; } }
+
+  /* ---- pipeline --------------------------------------------------- */
+  .pipe { display: flex; flex-direction: column; }
+  .hop {
+    display: grid; grid-template-columns: 26px minmax(0,1fr); gap: 15px;
+    padding: 11px 0; border-bottom: 1px dashed var(--rule);
+  }
+  .hop:last-child { border-bottom: none; }
+  .hop .n { font-family: var(--mono); font-size: 11px; color: var(--measured); font-weight: 700; padding-top: 3px; }
+  .hop .h { font-family: var(--mono); font-size: 0.81rem; word-break: break-word; }
+  .hop .d { font-size: 0.88rem; color: var(--ink-2); line-height: 1.48; }
+
+  /* ---- tables ----------------------------------------------------- */
+  .tw { overflow-x: auto; border: 1px solid var(--rule); border-radius: 3px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 10px 15px; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+  thead th {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.13em;
+    text-transform: uppercase; color: var(--ink-3); font-weight: 600;
+    background: var(--surface-2); white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td.mono { font-family: var(--mono); font-size: 0.81rem; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .was { color: var(--ink-3); text-decoration: line-through; text-decoration-thickness: 1px; }
+  .is  { color: var(--measured); font-weight: 600; }
+
+  /* ---- chart ------------------------------------------------------ */
+  figure { margin: 0; display: flex; flex-direction: column; gap: 14px; }
+  figcaption { font-size: 0.86rem; color: var(--ink-3); line-height: 1.5; max-width: 64ch; }
+  .chart { display: flex; flex-direction: column; gap: 10px; }
+  .cbar { display: grid; grid-template-columns: 74px minmax(0,1fr); gap: 14px; align-items: center; }
+  .cbar .rl {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--ink-3);
+  }
+  .ctrack { position: relative; height: 26px; display: flex; align-items: center; }
+  .cfill {
+    height: 26px; background: var(--measured); border-radius: 0 4px 4px 0;
+    display: flex; align-items: center; justify-content: flex-end;
+    transition: filter .15s ease;
+  }
+  .cbar:hover .cfill { filter: brightness(1.12); }
+  .cval {
+    font-family: var(--mono); font-size: 12px; font-weight: 600;
+    font-variant-numeric: tabular-nums; color: var(--ink);
+    padding-left: 9px; white-space: nowrap;
+  }
+  .caxis {
+    display: flex; justify-content: space-between; padding-left: 88px;
+    font-family: var(--mono); font-size: 10.5px; color: var(--ink-3);
+    font-variant-numeric: tabular-nums; border-top: 1px solid var(--rule);
+    padding-top: 6px; margin-top: 2px;
+  }
+  details { font-size: 0.87rem; color: var(--ink-2); }
+  details summary {
+    cursor: pointer; font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3);
+  }
+  details summary:focus-visible { outline: 2px solid var(--measured); outline-offset: 3px; }
+  details[open] summary { margin-bottom: 10px; }
+
+  /* ---- misc ------------------------------------------------------- */
+  pre {
+    margin: 0; background: var(--code-bg); color: var(--code-fg);
+    padding: 15px 17px; border-radius: 3px; overflow-x: auto;
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.6;
+  }
+  .note {
+    background: var(--measured-w); border: 1px solid var(--rule);
+    border-left: 3px solid var(--measured); border-radius: 3px;
+    padding: 17px 21px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .note p { font-size: 0.94rem; max-width: 66ch; }
+
+  .cols2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); gap: 16px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 3px;
+    padding: 19px 21px; display: flex; flex-direction: column; gap: 9px;
+  }
+  .card p { font-size: 0.9rem; color: var(--ink-2); max-width: none; }
+
+  ul { margin: 0; padding-left: 19px; display: flex; flex-direction: column; gap: 7px; max-width: 68ch; }
+  li { line-height: 1.5; font-size: 0.93rem; color: var(--ink-2); }
+  li::marker { color: var(--measured); }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono);
+    font-size: 10.5px; letter-spacing: 0.09em; text-transform: uppercase;
+    padding: 3px 9px; border-radius: 3px; font-weight: 600; white-space: nowrap;
+  }
+  .pill.r { background: var(--measured-w); color: var(--measured); }
+  .pill.s { background: var(--surface-2); color: var(--predicted); }
+
+  footer {
+    border-top: 1px solid var(--rule); margin-top: 0;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em;
+    color: var(--ink-3); text-transform: uppercase;
+  }
+</style>
+
+<div class="band">
+  <div class="inner hero">
+    <p class="eyebrow">Take-home · AI Engineer · Abderrahman</p>
+    <h1>An agent that runs your Design&ndash;Test&ndash;Learn loop end to end.</h1>
+    <p class="lede">
+      You published an API so software could order lab work without a human
+      clicking buttons. I built the software that uses it — it designs binders,
+      pre-screens them for free, prices and orders the assay, reads the results,
+      and designs a better batch from what came back.
+    </p>
+    <div class="links">
+      <a class="btn primary" href="https://adaptyv-copilot.streamlit.app">▶ Live demo</a>
+      <a class="btn" href="https://github.com/abderrahmanly/adaptyv-copilot">Repository</a>
+    </div>
+    <p style="font-size:0.87rem;color:var(--ink-3)">
+      The demo is password-protected — the password is in my email. Type
+      <em>“Find me a strong EGFR binder”</em> and watch it work.
+    </p>
+    <div class="keynums">
+      <div><span class="n">8</span><span class="l">agent tools</span></div>
+      <div><span class="n">2,114</span><span class="l">lines of Python</span></div>
+      <div><span class="n">4</span><span class="l">dependencies</span></div>
+      <div><span class="n">0</span><span class="l">agent frameworks</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- WHAT IT DOES ------------------------------------------------------ -->
+<div class="band alt">
+  <div class="inner stack">
+    <p class="eyebrow">What it does</p>
+    <h2>One goal in plain English, four steps, then it repeats.</h2>
+    <p>
+      The agent decides what to call and when. Nothing below is scripted — the
+      order emerges from the model reading your API's tool definitions.
+    </p>
+    <div class="loop">
+      <div class="s">
+        <span class="k">01 · Design</span>
+        <h3>Generate candidates</h3>
+        <p>Mutates a starting binder into a batch of variants, each with an id.</p>
+      </div>
+      <div class="s">
+        <span class="k">02 · Pre-screen</span>
+        <h3>Predict, for free</h3>
+        <p>Scores every candidate on CPU and keeps only the promising ones. Cheap and imperfect — that's the point.</p>
+      </div>
+      <div class="s" data-real>
+        <span class="k">03 · Test</span>
+        <h3>Order the assay</h3>
+        <p>Prices it, asks before spending, then creates and submits the experiment.</p>
+      </div>
+      <div class="s" data-real>
+        <span class="k">04 · Learn</span>
+        <h3>Use what came back</h3>
+        <p>Measured winners become the parents of the next round. The loop closes.</p>
+      </div>
+    </div>
+    <p style="font-size:0.88rem;color:var(--ink-3)">
+      Throughout this page, <span style="color:var(--predicted);font-weight:600">ochre</span>
+      marks a prediction and <span style="color:var(--measured);font-weight:600">teal</span>
+      marks a measurement.
+    </p>
+  </div>
+</div>
+
+<!-- WHY IT WORKS ------------------------------------------------------ -->
+<div class="band">
+  <div class="inner stack">
+    <p class="eyebrow">The idea it's built on</p>
+    <h2>Pre-screening is the whole economic argument.</h2>
+    <p>
+      In your public EGFR competition, 601 of roughly 1,800 submitted designs
+      were selected for wet-lab testing. Choosing which ones to test <em>is</em>
+      the job. At $249 per sequence, testing 40 designs costs $9,960; testing the
+      best 4 costs $996.
+    </p>
+    <p>
+      So the agent always predicts before it spends. But the prediction is
+      deliberately an imperfect proxy for the measured result — because that is
+      what protein design actually looks like. If prediction were reliable, the
+      lab wouldn't be necessary and neither would the loop.
+    </p>
+    <figure>
+      <div class="chart">
+        <div class="cbar">
+          <span class="rl">Round 1</span>
+          <div class="ctrack">
+            <div class="cfill" style="width:100%"></div><span class="cval">115.31 nM</span>
+          </div>
+        </div>
+        <div class="cbar">
+          <span class="rl">Round 2</span>
+          <div class="ctrack">
+            <div class="cfill" style="width:38.2%"></div><span class="cval">44.05 nM</span>
+          </div>
+        </div>
+        <div class="cbar">
+          <span class="rl">Round 3</span>
+          <div class="ctrack">
+            <div class="cfill" style="width:32.9%"></div><span class="cval">37.94 nM</span>
+          </div>
+        </div>
+        <div class="caxis"><span>0</span><span>Best measured K_D per round · lower is better</span></div>
+      </div>
+      <figcaption>
+        Three rounds, 3.0× improvement. These are <strong>simulated</strong>
+        measurements, not lab data — reproduce them with
+        <code>python demo_loop.py</code>, which runs the loop with no model in
+        the path so the mechanism is verifiable on its own.
+      </figcaption>
+      <details>
+        <summary>View as table</summary>
+        <div class="tw">
+          <table>
+            <thead><tr><th>Round</th><th class="num">Best K_D (nM)</th><th class="num">vs. round 1</th></tr></thead>
+            <tbody>
+              <tr><td>1</td><td class="num">115.31</td><td class="num">—</td></tr>
+              <tr><td>2</td><td class="num">44.05</td><td class="num">2.6×</td></tr>
+              <tr><td>3</td><td class="num">37.94</td><td class="num">3.0×</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </figure>
+  </div>
+</div>
+
+<!-- INTEGRATION ------------------------------------------------------- -->
+<div class="band alt">
+  <div class="inner stack">
+    <p class="eyebrow">Integration with the Foundry API</p>
+    <h2>I built the client against your OpenAPI schema, not your docs.</h2>
+    <p>
+      The schema is the contract. Your Python SDK isn't published to PyPI, so
+      <code>adaptyv_copilot/api.py</code> talks to the REST API directly — bearer
+      auth, the paginated list envelope, and errors surfaced with your
+      <code>request_id</code> so they're traceable on your side.
+    </p>
+    <p>
+      Writing it against the real schema caught six places where my simulator had
+      drifted from your actual contract:
+    </p>
+    <div class="tw">
+      <table>
+        <thead>
+          <tr><th>What I had assumed</th><th>What the API actually specifies</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="mono was">Draft / InProduction / Done</td><td class="mono is">draft / in_production / done</td></tr>
+          <tr><td class="was">5 experiment types</td><td class="is">7 — incl. epitope_binning, enzyme_activity</td></tr>
+          <tr><td class="was">no method field</td><td class="is">method: bli | spr — required on affinity &amp; screening</td></tr>
+          <tr><td class="mono was">target_id = "egfr"</td><td class="is">catalog UUID</td></tr>
+          <tr><td class="was">K_D in nanomolar</td><td class="is">molar — converted at the boundary</td></tr>
+          <tr><td class="was">prices in dollars</td><td class="is">cents</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note">
+      <p class="eyebrow" style="color:var(--measured)">Stated plainly</p>
+      <p>
+        The client is written and verified against your published contract, but
+        <strong>no authenticated call has run</strong> — I don't have a Foundry
+        token and didn't want to imply otherwise. With a read-only Viewer token
+        it reads your live catalogue immediately.
+      </p>
+    </div>
+    <p>
+      What I did instead was verify against the contract itself.
+      <code>python verify_real_api.py</code> runs 17 checks with no credentials:
+      request payloads against your per-assay-type field matrix, the cents→USD
+      and molar→nM conversions, error surfacing, the ordering guard — plus a live
+      ping of your health endpoint. It never creates or submits anything, so it
+      cannot spend money.
+    </p>
+    <pre>17/17 checks passed
+VERDICT: PASS</pre>
+  </div>
+</div>
+
+<!-- SAFETY ------------------------------------------------------------ -->
+<div class="band">
+  <div class="inner stack">
+    <p class="eyebrow">Spending controls</p>
+    <h2>An agent with a payment method needs a lock in code, not a polite prompt.</h2>
+    <div class="cols2">
+      <div class="card">
+        <h3>Ordering is blocked by default</h3>
+        <p>
+          Against the real Foundry, <code>create</code> and <code>submit</code>
+          refuse unless <code>ADAPTYV_ALLOW_ORDERING=true</code>. The check runs
+          before any HTTP request. Reads — targets, status, results, cost
+          estimates — always work.
+        </p>
+      </div>
+      <div class="card">
+        <h3>It confirms the amount first</h3>
+        <p>
+          The agent calls <code>estimate_cost</code>, states the dollar figure,
+          and waits. A general “go ahead” earlier in the conversation is not
+          treated as authorisation for a specific spend.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Nothing simulated is presented as real</h3>
+        <p>
+          The system prompt changes with the backend, and tool output carries a
+          <code>"source"</code> field. A generated number is never described as a
+          measurement — in the UI, the payload, or the agent's wording.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Both backends speak one vocabulary</h3>
+        <p>
+          I rebuilt the simulator to use your status enum, your seven assay
+          types, your BLI/SPR requirement. A mock speaking a different dialect
+          trains in bugs that only appear in production.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ARCHITECTURE ------------------------------------------------------ -->
+<div class="band alt">
+  <div class="inner stack">
+    <p class="eyebrow">Architecture</p>
+    <h2>What one message does.</h2>
+    <div class="pipe">
+      <div class="hop"><span class="n">1</span><div><div class="h">app.py — Streamlit</div><div class="d">Message appended to a plain list of dicts. That list is the conversation state.</div></div></div>
+      <div class="hop"><span class="n">2</span><div><div class="h">brain.run_turn(...)</div><div class="d">A generator. Yields events as they happen rather than returning a finished string, so the UI renders live and the same loop drives the CLI.</div></div></div>
+      <div class="hop"><span class="n">3</span><div><div class="h">messages.create(model, system, tools, messages)</div><div class="d">Backend-specific system prompt, 8 tool schemas, capped at 12 tool steps so it cannot spin.</div></div></div>
+      <div class="hop"><span class="n">4</span><div><div class="h">tools.dispatch(ctx, name, input)</div><div class="d">Every exception returns as <code>{"error": …}</code>. The model reads the error and corrects itself instead of the app crashing.</div></div></div>
+      <div class="hop"><span class="n">5</span><div><div class="h">foundry.get_foundry(mode) → Simulated | Real</div><div class="d">One interface, two implementations. The tool layer never knows which it holds.</div></div></div>
+      <div class="hop"><span class="n">6</span><div><div class="h">api.AdaptyvClient → httpx → devs.adaptyvbio.com/api/v1</div><div class="d">Real mode only.</div></div></div>
+      <div class="hop"><span class="n">7</span><div><div class="h">result → tool_result → back to step 3</div><div class="d">Appended as a user-role message; the loop runs again. That's the agent.</div></div></div>
+    </div>
+    <div class="note">
+      <p class="eyebrow" style="color:var(--measured)">One decision worth calling out</p>
+      <p>
+        The model never handles a protein sequence — only ids like
+        <code>cand_003</code>. Real sequences stay server-side and are swapped
+        back in at order time. Twenty-four 63-residue strings waste the context
+        window, and models silently corrupt long strings when copying them. One
+        wrong residue is a different protein and a wasted assay.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- STACK ------------------------------------------------------------- -->
+<div class="band">
+  <div class="inner stack">
+    <p class="eyebrow">Stack</p>
+    <h2>Four dependencies, no orchestration framework.</h2>
+    <div class="tw">
+      <table>
+        <thead><tr><th>Layer</th><th>Choice</th><th>Reason</th></tr></thead>
+        <tbody>
+          <tr><td>Language</td><td class="mono">Python 3.13</td><td>Same version locally and deployed.</td></tr>
+          <tr><td>Model</td><td class="mono">claude-opus-4-8</td><td>Tool use is the product. Adaptive thinking, summarised for display.</td></tr>
+          <tr><td>Agent loop</td><td class="mono">anthropic 0.120</td><td>Hand-written, ~50 lines. I need control over exactly what enters the context window.</td></tr>
+          <tr><td>UI</td><td class="mono">streamlit 1.60</td><td>Chat, collapsible tool calls, secrets. Time went into the agent, not the frontend.</td></tr>
+          <tr><td>HTTP</td><td class="mono">httpx 0.28</td><td>Foundry REST client. Already a transitive dependency.</td></tr>
+          <tr><td>State</td><td class="mono">in-memory dataclass</td><td>A campaign is one conversation. No database — a deliberate scope limit, not an oversight.</td></tr>
+          <tr><td>Deploy</td><td class="mono">GitHub → Streamlit Cloud</td><td>Push to main redeploys. Secrets never enter the repo.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- REAL VS SIM ------------------------------------------------------- -->
+<div class="band alt">
+  <div class="inner stack">
+    <p class="eyebrow">Scope</p>
+    <h2>What's real, and what isn't.</h2>
+    <div class="tw">
+      <table>
+        <thead><tr><th>Component</th><th>Status</th><th>Detail</th></tr></thead>
+        <tbody>
+          <tr><td>Agent, tool loop, decisions</td><td><span class="pill r">Real</span></td><td>Live Claude, real tool-use round trips.</td></tr>
+          <tr><td>Foundry API client</td><td><span class="pill r">Real</span></td><td>Built and verified against your OpenAPI schema.</td></tr>
+          <tr><td>Sequence design</td><td><span class="pill r">Real</span></td><td>Mutation-based. A placeholder with the right interface — ProteinMPNN or ESM drops into one function.</td></tr>
+          <tr><td>In-silico scoring</td><td><span class="pill r">Real</span></td><td>Hydropathy, net charge, aromatic fraction, length. Real biophysics, not a real structure model.</td></tr>
+          <tr><td>Lab measurements</td><td><span class="pill s">Simulated</span></td><td>Default backend. Real assays take ~3 weeks; this had to run in a minute.</td></tr>
+          <tr><td>Authenticated API call</td><td><span class="pill s">Not run</span></td><td>No Foundry token. A Viewer token is all it needs.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- NEXT -------------------------------------------------------------- -->
+<div class="band">
+  <div class="inner stack">
+    <p class="eyebrow">What I'd build next</p>
+    <h2>In order.</h2>
+    <ul>
+      <li><strong>Webhooks instead of polling.</strong> Your create endpoint already accepts a <code>webhook_url</code> and signs the body with HMAC-SHA256. The agent parks the campaign and the webhook wakes it when results land — that's what makes a three-week loop workable rather than theoretical.</li>
+      <li><strong>A real structure predictor for the pre-screen.</strong> ESMFold or AlphaFold confidence in place of the biophysics heuristic. The scoring interface doesn't change.</li>
+      <li><strong>A generative design model.</strong> ProteinMPNN or RFdiffusion output replacing the mutation generator.</li>
+      <li><strong>Persistence.</strong> Campaign state in a database so a run survives a refresh. Correct for production, unnecessary for a demo.</li>
+      <li><strong>The tool layer as an MCP server</strong>, so any assistant can order assays — not just this one.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- CLOSE ------------------------------------------------------------- -->
+<div class="band alt">
+  <div class="inner stack">
+    <h2>Try it.</h2>
+    <p>
+      The demo runs against the simulator so you can see a full two-round
+      campaign in about a minute. Send me a read-only Viewer token and I'll
+      point it at your live catalogue.
+    </p>
+    <div class="links">
+      <a class="btn primary" href="https://adaptyv-copilot.streamlit.app">▶ Live demo</a>
+      <a class="btn" href="https://github.com/abderrahmanly/adaptyv-copilot">Repository</a>
+    </div>
+  </div>
+</div>
+
+<footer class="band">
+  <div class="inner tight" style="padding:20px 0">
+    Adaptyv Copilot · agent, design and scoring real · lab backend simulated by default
+  </div>
+</footer>
+
+</body>
+</html>
