@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from . import catalog, science
-from .foundry import FoundryError, get_foundry
+from .foundry import EXPERIMENT_TYPES, FoundryError, get_foundry
 
 
 @dataclass
@@ -21,6 +21,7 @@ class AgentContext:
     mode: str = "simulated"
     foundry: object = None
     candidates: dict[str, str] = field(default_factory=dict)  # id -> sequence
+    target_names: dict[str, str] = field(default_factory=dict)  # target id -> name
     _counter: int = 0
 
     def __post_init__(self):
@@ -102,15 +103,25 @@ TOOLS = [
     },
     {
         "name": "estimate_cost",
-        "description": "Estimate the price of an assay before ordering it.",
+        "description": "Estimate the price of an assay before ordering it. Against "
+        "the real Foundry this returns live pricing; pass target_id for binding "
+        "assays so antigen costs resolve.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "experiment_type": {
-                    "type": "string",
-                    "enum": ["screening", "affinity", "expression", "thermostability", "fluorescence"],
-                },
+                "experiment_type": {"type": "string", "enum": list(EXPERIMENT_TYPES)},
                 "candidate_ids": {"type": "array", "items": {"type": "string"}},
+                "target_id": {"type": "string"},
+                "method": {
+                    "type": "string",
+                    "enum": ["bli", "spr"],
+                    "description": "Measurement method. Required for affinity and "
+                    "screening (defaults to bli); rejected for other types.",
+                },
+                "n_replicates": {
+                    "type": "integer",
+                    "description": "Technical replicates. Default 1; the lab recommends 3+.",
+                },
             },
             "required": ["experiment_type", "candidate_ids"],
         },
@@ -119,17 +130,22 @@ TOOLS = [
         "name": "order_assay",
         "description": "Order a wet-lab assay from the Adaptyv Foundry for the given "
         "candidates: creates the experiment and submits it. Confirm cost with the "
-        "user before calling this. 'affinity' and 'screening' require a target_id.",
+        "user before calling this. 'affinity', 'screening' and 'epitope_binning' "
+        "require a target_id; 'affinity' and 'screening' also take a method "
+        "(bli or spr). Against the real Foundry this places a paid order.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "name": {"type": "string", "description": "A human-readable experiment name."},
-                "experiment_type": {
-                    "type": "string",
-                    "enum": ["screening", "affinity", "expression", "thermostability", "fluorescence"],
-                },
+                "experiment_type": {"type": "string", "enum": list(EXPERIMENT_TYPES)},
                 "candidate_ids": {"type": "array", "items": {"type": "string"}},
-                "target_id": {"type": "string"},
+                "target_id": {
+                    "type": "string",
+                    "description": "Target id from list_targets (a catalog UUID "
+                    "against the real Foundry).",
+                },
+                "method": {"type": "string", "enum": ["bli", "spr"]},
+                "n_replicates": {"type": "integer"},
             },
             "required": ["name", "experiment_type", "candidate_ids"],
         },
@@ -182,7 +198,13 @@ def dispatch(ctx: AgentContext, name: str, args: dict) -> dict:
 
 
 def _list_targets(ctx, args):
-    return {"targets": ctx.foundry.list_targets(args.get("search"))}
+    targets = ctx.foundry.list_targets(args.get("search"))
+    # Remember id -> name so design_candidates can pick a starting scaffold even
+    # when the id is an opaque Foundry catalog UUID.
+    for t in targets:
+        if t.get("id") and t.get("name"):
+            ctx.target_names[str(t["id"])] = t["name"]
+    return {"targets": targets}
 
 
 def _design_candidates(ctx, args):
@@ -194,8 +216,11 @@ def _design_candidates(ctx, args):
         parents = list(ctx.resolve(parent_ids).values())
         origin = f"optimising around {len(parent_ids)} parent(s)"
     else:
-        parents = [catalog.get_target(target_id).seed_binder]
-        origin = "mutating the seed binder"
+        seed, provenance = catalog.resolve_seed(
+            target_id, ctx.target_names.get(str(target_id))
+        )
+        parents = [seed]
+        origin = f"mutating the {provenance}"
     # Seed generator on current candidate count for round-to-round variety.
     variants = science.generate_variants(
         parents, n, mutation_rate=mutation_rate, seed=len(ctx.candidates) + 1
@@ -230,7 +255,14 @@ def _score_candidates(ctx, args):
 
 def _estimate_cost(ctx, args):
     seqs = ctx.resolve(args["candidate_ids"])
-    return ctx.foundry.cost_estimate(args["experiment_type"], seqs)
+    kwargs = {
+        "method": args.get("method"),
+        "n_replicates": int(args.get("n_replicates", 1)),
+    }
+    if ctx.foundry.mode == "real":
+        # The live pricing endpoint needs the target to resolve antigen costs.
+        kwargs["target_id"] = args.get("target_id")
+    return ctx.foundry.cost_estimate(args["experiment_type"], seqs, **kwargs)
 
 
 def _order_assay(ctx, args):
@@ -240,6 +272,8 @@ def _order_assay(ctx, args):
         experiment_type=args["experiment_type"],
         sequences=seqs,
         target_id=args.get("target_id"),
+        method=args.get("method"),
+        n_replicates=int(args.get("n_replicates", 1)),
     )
     submitted = ctx.foundry.submit_experiment(created["id"])
     return {"experiment": submitted, "ordered_candidate_ids": list(seqs)}

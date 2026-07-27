@@ -40,9 +40,11 @@ TARGETS: dict[str, Target] = {
             full_name="Epidermal Growth Factor Receptor (ectodomain)",
             seed_binder=_EGFR_SEED,
             note=(
-                "The target from Adaptyv's public binder-design competition. "
-                "Best community de-novo binder reached ~82 nM; optimised binders "
-                "reached ~1.2 nM (8x stronger than the antibody Cetuximab)."
+                "The target from Adaptyv's public binder-design competition "
+                "(130 teams, ~1,800 designs, 601 selected for wet-lab testing). "
+                "Best de-novo binder reached K_D 82 nM; the winning optimised "
+                "binder reached 1.21 nM — 8x tighter than an scFv-format of "
+                "Cetuximab (9.94 nM). Measured on Adaptyv's automated BLI pipeline."
             ),
         ),
         Target(
@@ -80,3 +82,36 @@ def get_target(target_id: str) -> Target:
             f"Unknown target '{target_id}'. Known targets: {', '.join(TARGETS)}"
         )
     return TARGETS[key]
+
+
+# A generic de-novo three-helix miniprotein scaffold, used when designing
+# against a target we have no curated starting binder for (every target in the
+# real Foundry catalog, which is keyed by UUID rather than by our short ids).
+GENERIC_SCAFFOLD = (
+    "MSEEELKKLAEELVKKNPSDEVLKLLQEAEKLLKEHPSDPELLELAKKVAELLKKLGSGSE"
+)
+
+
+def resolve_seed(target_id: str, target_name: str | None = None) -> tuple[str, str]:
+    """Find a starting binder for ``target_id``.
+
+    Returns ``(sequence, provenance)``. Falls back to a generic scaffold for
+    targets outside the local catalog — real Foundry targets are catalog UUIDs,
+    and Adaptyv supplies the antigen, not a starting binder for it.
+    """
+    key = (target_id or "").lower().strip()
+    if key in TARGETS:
+        t = TARGETS[key]
+        return t.seed_binder, f"curated seed binder for {t.name}"
+
+    if target_name:
+        name = target_name.lower()
+        for t in TARGETS.values():
+            if t.name.lower() in name or name in t.full_name.lower():
+                return t.seed_binder, f"curated seed binder for {t.name}"
+
+    label = target_name or target_id
+    return GENERIC_SCAFFOLD, (
+        f"generic de-novo miniprotein scaffold (no curated starting binder for "
+        f"'{label}')"
+    )

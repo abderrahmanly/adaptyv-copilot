@@ -77,24 +77,49 @@ Then try: **“Find me a strong EGFR binder — design a batch, test the best fe
 
 ## What's real vs. simulated (read this)
 
-The **agent, the design, and the scoring are real**. The **Foundry backend is a
-faithful simulation** by default (`ADAPTYV_MODE=simulated`), because real assays
-cost money and take ~3 weeks — not suitable for a demo you can run in a minute.
+Two backends sit behind one interface, chosen by `ADAPTYV_MODE`.
 
-- The simulated Foundry mirrors the real API's shape (`list_targets`,
-  `cost_estimate`, `create_experiment`, `submit`, `get_results`, the
-  Draft→…→Done lifecycle, the five assay types, per-sequence pricing).
-- A hidden "ground-truth" fitness landscape stands in for the wet lab; the
-  agent's in-silico score is a deliberately *imperfect* predictor of it — which
-  is exactly why pre-screening saves money but the lab still surprises you.
-- `fast_forward_experiment` skips the ~3-week wait so the demo can show the
-  Learn step; the agent always tells you when it does this.
-- Flip `ADAPTYV_MODE=real` (plus a Foundry token) to route through the official
-  [`adaptyv-sdk`](https://github.com/adaptyvbio/adaptyv-sdk). `RealFoundry` in
-  `foundry.py` marks exactly where each real SDK call plugs in.
+**`real`** — a working client for the live Adaptyv Foundry REST API
+(`adaptyv_copilot/api.py`), built against the public
+[OpenAPI schema](https://devs.adaptyvbio.com/api/v1/openapi.json). It speaks the
+real contract: catalog-UUID targets, the `bli`/`spr` method required on binding
+assays, all seven experiment types, the lowercase status enum, live pricing in
+cents, and K_D returned in molar (converted to nM at the boundary).
+
+> **Real mode is read-only unless you opt in.** Creating and submitting an
+> experiment places a genuine, paid lab order, so both are refused unless
+> `ADAPTYV_ALLOW_ORDERING=true`. Reads — targets, status, results, cost
+> estimates — always work and cost nothing. A **Viewer** token is enough for
+> them.
+
+**`simulated`** (default) — free, offline, deterministic, and deliberately
+*vocabulary-identical* to the real backend, so agent behaviour doesn't change
+when you switch. A hidden "ground-truth" fitness landscape stands in for the wet
+lab; the agent's in-silico score is an intentionally *imperfect* predictor of it
+— which is exactly why pre-screening saves money but the lab still surprises
+you. `fast_forward_experiment` skips the ~3-week wait so a demo can reach the
+Learn step; it exists only here, and the agent always says when it uses it.
+
+The agent's system prompt changes with the backend, so it never describes
+simulated numbers as measurements — and in real mode it knows ordering may be
+blocked and that results take three weeks.
+
+Verify the integration yourself:
+
+```bash
+python verify_real_api.py
+```
+
+17 checks run with no credentials — request-payload construction against the
+published contract, the per-assay-type validation matrix, cents→USD and
+molar→nM conversion, error surfacing, the ordering guard — plus a live ping of
+Adaptyv's health endpoint. Add `ADAPTYV_API_TOKEN` to `.env` and it additionally
+performs real authenticated reads (`whoami`, the live target catalog). It never
+creates or submits anything, so it cannot spend money.
 
 Nothing here fabricates results presented as real: simulation is labelled
-everywhere, in the UI, the tools, and the agent's own words.
+everywhere — in the UI, in the tool output (`"source"`), and in the agent's own
+words.
 
 ---
 
@@ -104,11 +129,13 @@ everywhere, in the UI, the tools, and the agent's own words.
 |------|------|
 | `adaptyv_copilot/brain.py` | The agent: a manual Claude (Opus 4.8) tool-use loop with adaptive thinking; streams events for the UI. |
 | `adaptyv_copilot/tools.py` | Tool schemas + dispatch; an ID-based candidate store so the model handles `cand_xxx` ids, not raw sequences. |
-| `adaptyv_copilot/foundry.py` | `SimulatedFoundry` (mirrors the real API) and `RealFoundry` (swap-in via `adaptyv-sdk`). |
+| `adaptyv_copilot/api.py` | HTTP client for the live Foundry REST API — auth, pagination, error surfacing. |
+| `adaptyv_copilot/foundry.py` | `SimulatedFoundry` (mirrors the real API) and `RealFoundry` (talks to it), behind one interface. |
 | `adaptyv_copilot/science.py` | Sequence generation, the cheap in-silico predictor, and the hidden lab-truth landscape. |
 | `adaptyv_copilot/catalog.py` | Targets (EGFR, PD-L1) and seed binders. |
 | `app.py` / `cli.py` | Streamlit and terminal front-ends. |
 | `demo_loop.py` | LLM-free run of the full loop — a mechanics test and reproducible learning-curve demo. |
+| `verify_real_api.py` | Checks the real-API integration against the published contract; live reads if a token is set. |
 
 **The agent's tools**
 
@@ -125,7 +152,10 @@ everywhere, in the UI, the tools, and the agent's own words.
    assay → orders it → (simulated turnaround) → reads K_D results → carries the
    winners into a better round → reports the K_D improvement.
 4. Show a direct-ordering ask too: *"Order an expression assay on cand_003 and cand_007."*
-5. Point at `foundry.py`'s `RealFoundry` and note the one-env-var switch to the live Adaptyv API.
+5. Run `python verify_real_api.py` on camera — it proves the real-API client
+   matches Adaptyv's published contract and pings their live health endpoint.
+6. Point at `api.py` / `RealFoundry`, and at the `ADAPTYV_ALLOW_ORDERING` guard:
+   real mode is read-only until you deliberately opt in to spending money.
 
 ---
 
@@ -133,9 +163,11 @@ everywhere, in the UI, the tools, and the agent's own words.
 
 - Swap the mutation-based generator for **ProteinMPNN/RFdiffusion/ESM** output.
 - Replace the heuristic pre-screen with **ESMFold/AlphaFold** confidence (pLDDT/ipTM).
-- Wire `RealFoundry` to the live `adaptyv-sdk` and add **webhook** handling so
-  results notify the agent when they're ready (no polling).
+- Add **webhook** handling (`webhook_url` is already supported at experiment
+  creation) so results notify the agent when ready, instead of polling. The
+  signature check is `X-Adaptyv-Signature: sha256=<HMAC over the raw body>`.
 - Package the tool layer as an **MCP server** so any assistant can order assays.
+  (Adaptyv also hosts one at `https://mcp.adaptyvbio.com/mcp/`.)
 
 ---
 

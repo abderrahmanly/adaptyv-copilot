@@ -42,6 +42,17 @@ git push -u origin main
    APP_PASSWORD = "a-password-for-adaptyv"
    ```
 
+   Optional — to let the deployed app read Adaptyv's **live** target catalog,
+   add a Viewer-role Foundry token. It is read-only and cannot spend money:
+
+   ```toml
+   ADAPTYV_API_TOKEN = "..."
+   ```
+
+   Do **not** set `ADAPTYV_ALLOW_ORDERING` on a public deployment. Without it,
+   real ordering stays blocked — which is what you want for a demo anyone can
+   open.
+
 4. **Deploy.** First build takes a couple of minutes while it installs
    `requirements.txt`. You'll get a public `*.streamlit.app` URL.
 
@@ -50,8 +61,11 @@ Send Adaptyv the URL and the password. They open it, type a goal like
 *"Find me a strong EGFR binder"*, and watch the agent work.
 
 ## Safety recap
-- **Password gate** (`APP_PASSWORD`) keeps random visitors out.
+- **Password gate** (`APP_PASSWORD`) keeps random visitors out. Set it — without
+  it, anyone who finds the URL spends your Anthropic credits.
 - **`ADAPTYV_MODE=simulated`** means no real (paid) lab orders are ever placed.
+- **`ADAPTYV_ALLOW_ORDERING` unset** is a second, independent lock: even in real
+  mode the app refuses to create or submit experiments.
 - **Anthropic spend limit** caps the only real cost (Claude tokens).
 - To rotate/kill access later: change `APP_PASSWORD` in Secrets, or delete the
   app from the Streamlit dashboard.

@@ -12,6 +12,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from adaptyv_copilot.brain import build_client, run_turn
+from adaptyv_copilot.foundry import FoundryError, ordering_enabled
 from adaptyv_copilot.tools import AgentContext
 
 load_dotenv()
@@ -23,7 +24,8 @@ st.set_page_config(page_title="Adaptyv Copilot", page_icon="🧬", layout="cente
 # rest of the app (anthropic.Anthropic(), ADAPTYV_MODE, the password gate) works
 # identically whether running locally or deployed.
 try:  # st.secrets raises if no secrets are configured at all
-    for _k in ("ANTHROPIC_API_KEY", "ADAPTYV_MODE", "APP_PASSWORD"):
+    for _k in ("ANTHROPIC_API_KEY", "ADAPTYV_MODE", "APP_PASSWORD",
+               "ADAPTYV_API_TOKEN", "ADAPTYV_API_URL", "ADAPTYV_ALLOW_ORDERING"):
         if _k in st.secrets and not os.getenv(_k):
             os.environ[_k] = str(st.secrets[_k])
 except Exception:
@@ -89,13 +91,34 @@ if "messages" not in st.session_state:
 if "transcript" not in st.session_state:
     st.session_state.transcript = []        # render-friendly log of events
 if "ctx" not in st.session_state:
-    st.session_state.ctx = AgentContext(mode=os.getenv("ADAPTYV_MODE", "simulated"))
+    _mode = os.getenv("ADAPTYV_MODE", "simulated")
+    try:
+        st.session_state.ctx = AgentContext(mode=_mode)
+        st.session_state.backend_error = None
+    except FoundryError as exc:
+        # Real mode needs a Foundry token; fall back rather than crash the page.
+        st.session_state.ctx = AgentContext(mode="simulated")
+        st.session_state.backend_error = str(exc)
 
 # --- sidebar ---------------------------------------------------------------- #
 with st.sidebar:
     st.title("🧬 Adaptyv Copilot")
     st.caption("An autonomous Design → Test → Learn agent for the Adaptyv Foundry.")
-    st.markdown(f"**Backend:** `{st.session_state.ctx.foundry.mode}`")
+    _backend = st.session_state.ctx.foundry.mode
+    st.markdown(f"**Backend:** `{_backend}`")
+    if _backend == "real":
+        if ordering_enabled():
+            st.warning("Live Foundry · **ordering enabled** — assays placed here "
+                       "are real, paid orders.", icon="💸")
+        else:
+            st.success("Live Foundry · read-only. Ordering is blocked "
+                       "(`ADAPTYV_ALLOW_ORDERING` is not set).", icon="🔒")
+    else:
+        st.info("Simulated Foundry — no real orders, no cost. Results are "
+                "generated, not measured.", icon="🧪")
+    if st.session_state.get("backend_error"):
+        st.error(f"Real backend unavailable, using the simulator instead.\n\n"
+                 f"{st.session_state.backend_error}")
     st.markdown(f"**Candidates in memory:** {len(st.session_state.ctx.candidates)}")
     if not os.getenv("ANTHROPIC_API_KEY"):
         st.error("Set ANTHROPIC_API_KEY in a .env file to run the agent.")
